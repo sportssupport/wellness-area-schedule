@@ -102,6 +102,13 @@ html,body{background:#2a2a2a;color:#fff;font-family:'Frutiger LightCn',"Arial Na
 .hclean{font-size:17px;letter-spacing:1px;color:#555;background:repeating-linear-gradient(135deg,#f7f7f7 0 6px,#e0e0e0 6px 8px);padding:3px 10px;border-radius:6px}
 .bar .n{color:#000 !important;text-decoration:underline;text-decoration-color:#f4bd00;text-decoration-thickness:.16em;text-underline-offset:.22em}
 .bar .n{margin-bottom:8px} .bar .nm{gap:0}
+.hstack .keys{justify-content:space-between}
+.hstack{display:flex;flex-direction:column;align-items:stretch;gap:10px}
+.aufbar{display:flex;align-items:center;gap:12px;background:#f4bd00;color:#000;border-radius:14px;padding:9px 16px;box-shadow:0 1px 2px rgba(0,0,0,.06),0 6px 18px rgba(244,189,0,.28)}
+.auft{display:flex;flex-direction:column;gap:3px}
+.aufh{font-family:'Platelet';font-weight:600;font-size:17px;letter-spacing:3px;white-space:nowrap}
+.aufs{font-family:'Frutiger LightCn';font-weight:300;font-size:18px;letter-spacing:.2px;white-space:nowrap}
+
 </style>
 </head>
 <body>
@@ -184,10 +191,11 @@ function cleanSummary(plan){
 /* ---------- Aufbau ---------- */
 function build(data){
   const W="#000";
+  const auf=`<div class="aufbar"><svg viewBox="0 0 24 24" width="38" height="38" fill="none" aria-hidden="true"><path d="M7 21c-2-3 2-5 0-8s2-5 0-8" stroke="#000" stroke-width="1.8" stroke-linecap="round"/><path d="M12 21c-2-3 2-5 0-8s2-5 0-8" stroke="#000" stroke-width="1.8" stroke-linecap="round"/><path d="M17 21c-2-3 2-5 0-8s2-5 0-8" stroke="#000" stroke-width="1.8" stroke-linecap="round"/></svg><div class="auft"><span class="aufh">AUTOMATISCHER AUFGUSS</span><span class="aufs">alle 30 Min · volle &amp; halbe Stunde · beide Saunen</span></div></div>`;
   const head=`<div class="head">
     <div><div class="brand"><span class="logo">sportssupport</span><span class="claim">FEEL THE HEAT</span></div>
     <div class="ttl"><span class="th">SAUNA</span><span class="tb">WOCHENPLAN</span></div><div class="obar"></div></div>
-    <div class="hright"><div class="keys"><span><i class="lg" style="background:#ef5b84">${icon("ladies",.8)}</i>Ladies</span><span><i class="lg" style="background:#fff">${icon("mixed",.8)}</i>Mixed</span><span><i class="lg" style="background:repeating-linear-gradient(135deg,#f7f7f7 0 8px,#d4d4d4 8px 10.5px)">${icon("clean",.8,"#5a5b59")}</i>Reinigung</span></div>
+    <div class="hright"><div class="hstack">${auf}<div class="keys"><span><i class="lg" style="background:#ef5b84">${icon("ladies",.8)}</i>Ladies</span><span><i class="lg" style="background:#fff">${icon("mixed",.8)}</i>Mixed</span><span><i class="lg" style="background:repeating-linear-gradient(135deg,#f7f7f7 0 8px,#d4d4d4 8px 10.5px)">${icon("clean",.8,"#5a5b59")}</i>Reinigung</span></div></div>
     <div class="qr"><div class="qrbox">${qrSvg()}</div><div class="qrcap">PLAN AM HANDY</div></div></div>
   </div>`;
   const san=`<div class="bar san"><div class="nm"><span class="n">SAUNA COZY</span><span class="cap">MAX. 8 PERSONEN</span></div>

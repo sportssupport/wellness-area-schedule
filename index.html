@@ -166,6 +166,26 @@
 .row.clean{background:repeating-linear-gradient(135deg,#f7f7f7 0 8px,#d4d4d4 8px 10.5px);box-shadow:none}
 .row.clean .time,.row.clean .area{color:#555}
 .row.past{opacity:.5}
+
+/* ===== Automatischer Aufguss ===== */
+.hero-title{position:relative}
+#aufguss{position:absolute;right:0;bottom:2px}
+.auf{display:inline-flex;align-items:center;gap:18px;background:#f4bd00;color:#000;border-radius:22px;padding:14px 28px 14px 20px;box-shadow:0 8px 30px rgba(244,189,0,.35)}
+.auf svg{width:60px;height:60px;flex:0 0 auto}
+.auf .ah{font-family:'Platelet',sans-serif;font-weight:600;font-size:25px;letter-spacing:4px;white-space:nowrap}
+.auf .at{margin-top:4px;font-family:'Frutiger LightCn',sans-serif;font-weight:300;font-size:50px;letter-spacing:1px;white-space:nowrap;line-height:1}
+.auf .at b{font-weight:400}
+.auf.now{animation:aufPulse 1.6s ease-in-out infinite}
+.auf.now svg{animation:steamUp 1.6s ease-in-out infinite}
+@keyframes aufPulse{0%,100%{box-shadow:0 0 0 0 rgba(244,189,0,.7)}50%{box-shadow:0 0 0 26px rgba(244,189,0,0)}}
+@keyframes steamUp{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.status-row{align-items:flex-end}
+.schedule-top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:20px}
+.schedule-top .schedule-title{margin:0}
+.schedule-list{min-height:0;overflow:hidden}
+.auftag{display:flex;align-items:center;gap:12px;background:#f4bd00;color:#000;border-radius:14px;padding:10px 20px;font-family:'Frutiger LightCn',sans-serif;font-weight:300;font-size:29px;letter-spacing:1px;white-space:nowrap}
+.auftag svg{width:38px;height:38px}
+.auftag b{font-family:'Platelet',sans-serif;font-weight:600;font-size:24px;letter-spacing:3px}
 </style>
 </head>
 <body>
@@ -185,6 +205,7 @@
       <span class="bold">SAUNA COZY</span>
       <span class="thin">AKTUELL</span>
       <div class="orange-underline"></div>
+      <div id="aufguss"></div>
     </div>
 
     <div class="status-row">
@@ -201,7 +222,7 @@
 
   <!-- ===== UNTEN: Tagesplan ===== -->
   <div class="schedule">
-    <div class="schedule-title">TAGESPLAN SAUNA COZY</div>
+    <div class="schedule-top"><div class="schedule-title">TAGESPLAN</div><div class="auftag" id="aufTag"></div></div>
     <div class="schedule-list" id="scheduleList"></div>
   </div>
 
@@ -358,6 +379,12 @@ function renderSchedule(weekday, rows, activeRow, nowMin){
       <div class="area">${r.bereich}</div>`;
     list.appendChild(div);
   });
+  // Falls die Termine nicht ganz in den Tagesplan passen: schrittweise verkleinern
+  let sc = scale;
+  while(list.scrollHeight > list.clientHeight + 1 && sc > 0.55){
+    sc = Math.round((sc - 0.03)*100)/100;
+    list.style.setProperty("--row-scale", sc);
+  }
 }
 
 function renderHero(activeRow, nextInfo, rows){
@@ -411,6 +438,31 @@ function renderHero(activeRow, nextInfo, rows){
   accessEl.textContent = afterText(activeRow, rows);
 }
 
+
+/* ---------- Automatischer Aufguss: alle 30 Min (volle + halbe Stunde), nur in Betriebszeiten ---------- */
+function steamIcon(c){
+  return `<svg viewBox="0 0 24 24" fill="none"><path d="M7 21c-2-3 2-5 0-8s2-5 0-8" stroke="${c}" stroke-width="1.8" stroke-linecap="round"/><path d="M12 21c-2-3 2-5 0-8s2-5 0-8" stroke="${c}" stroke-width="1.8" stroke-linecap="round"/><path d="M17 21c-2-3 2-5 0-8s2-5 0-8" stroke="${c}" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+}
+function hhmm(m){ return String(Math.floor(m/60)%24).padStart(2,"0")+":"+String(m%60).padStart(2,"0"); }
+function isOpenAt(rows, m){
+  return rows.some(r => !String(r.bereich).toLowerCase().includes("reinigung") && m >= toMinutes(r.start) && m < toMinutes(r.end));
+}
+const AUF_NOW_MIN = 3; // so lange nach :00 / :30 steht "AUFGUSS JETZT"
+function renderAufguss(rows, nowMin){
+  const el = document.getElementById("aufguss");
+  const slot = Math.floor(nowMin/30)*30;
+  if(nowMin - slot < AUF_NOW_MIN && isOpenAt(rows, slot)){
+    el.innerHTML = `<div class="auf now">${steamIcon("#000")}<div><div class="ah">AUFGUSS</div><div class="at"><b>JETZT</b></div></div></div>`;
+    return;
+  }
+  let next = null;
+  for(let c = Math.ceil((nowMin+1)/30)*30; c < 24*60; c += 30){ if(isOpenAt(rows, c)){ next = c; break; } }
+  if(next === null){ el.innerHTML = ""; return; }
+  const diff = next - nowMin;
+  const txt = diff <= 15 ? `in <b>${diff} Min</b> · ${hhmm(next)}` : `<b>${hhmm(next)}</b> Uhr`;
+  el.innerHTML = `<div class="auf">${steamIcon("#000")}<div><div class="ah">NÄCHSTER AUFGUSS</div><div class="at">${txt}</div></div></div>`;
+}
+
 function update(){
   const { weekday, minutes } = nowInVienna();
   const rows = scheduleData[weekday] || [];
@@ -418,10 +470,12 @@ function update(){
   const next = active ? null : findNext(weekday, minutes);
   renderSchedule(weekday, rows, active, minutes);
   renderHero(active, next, rows);
+  renderAufguss(rows, minutes);
 }
 
 /* ---------- Statischer Wegweiser-Pfeil (immer sichtbar, Richtung Sauna) ---------- */
 document.getElementById("statusArrow").innerHTML = arrowIcon(WAY_COLOR);
+document.getElementById("aufTag").innerHTML = steamIcon("#000") + "<b>AUFGUSS</b> alle 30 Min · volle &amp; halbe Stunde";
 
 /* ---------- Skalierung an Fenster-/Screengroesse ---------- */
 function fitScreen(){
