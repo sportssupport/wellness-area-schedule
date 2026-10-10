@@ -109,6 +109,18 @@ html,body{background:#2a2a2a;color:#fff;font-family:'Frutiger LightCn',"Arial Na
 .aufh{font-family:'Platelet';font-weight:600;font-size:17px;letter-spacing:3px;white-space:nowrap}
 .aufs{font-family:'Frutiger LightCn';font-weight:300;font-size:18px;letter-spacing:.2px;white-space:nowrap}
 
+
+/* Sauna View + Infrarot nebeneinander */
+.duo{margin-top:auto;margin-bottom:26px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.duo .fin{margin:0}
+.duo .bar{padding:14px 22px;min-width:0}
+.duo .fin > svg{display:none}
+.duo .bar .n{font-size:38px !important;letter-spacing:5px !important;white-space:nowrap}
+.duo .fin .sp,.duo .fin .hclean{display:none}
+.duo .bar .hr .h1{font-size:16px}
+.duo .bar .hr .h2{font-size:30px;white-space:nowrap}
+.duo .bar .hl .z{font-size:27px;white-space:nowrap}
+.duo .bar .hl .d{font-size:16px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -227,7 +239,8 @@ function build(data){
   const cleanLine = (!finClosed && cg.length) ? `<div class="hclean">${cg.map(g=>"Reinigung "+(dayRange(g)==="TÄGLICH"?"täglich":dayRange(g))+" "+esc(g.txt)).join(" · ")}</div>` : "";
   const fin=`<div class="bar fin">${icon("mixed",1.9,W,3)}<div class="nm"><span class="n">SAUNA VIEW</span></div>
     <div class="r"><div class="hcol">${hours}${cleanLine}</div>${finClosed?"":`<div class="sp"><span>${thermo(W)}85 °C</span><span>${drop(W)}10 %</span></div>`}</div></div>`;
-  return head+san+body+fin;
+  const infra=`<div class="bar infra"><div class="nm"><span class="n">INFRAROT</span></div><div class="r"><div class="hr"><div class="hl"><span class="d">MO – DO</span><span class="z">06:00 – 24:00</span></div><div class="hl"><span class="d">FR – SO</span><span class="z">06:00 – 23:00</span></div></div></div></div>`;
+  return head+san+body+`<div class="duo">${fin}${infra}</div>`;
 }
 
 /* Zellenhoehe so waehlen, dass alles in 840 px passt */

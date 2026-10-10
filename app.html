@@ -251,6 +251,21 @@ function aufgussPill(plan,t){
 }
 const AUFGUSS_BANNER=`<div class="aufbanner">${steamIcon("#000",34)}<div class="aufb-t"><div class="aufb-h">AUTOMATISCHER AUFGUSS</div><div class="aufb-s">alle 30 Minuten · zur vollen und halben Stunde · in beiden Saunen</div></div></div>`;
 
+
+/* ---------- Infrarotkabine: feste Zeiten (nicht im Sheet) ---------- */
+const INFRA={ "Montag":["06:00","24:00"],"Dienstag":["06:00","24:00"],"Mittwoch":["06:00","24:00"],"Donnerstag":["06:00","24:00"],
+  "Freitag":["06:00","23:00"],"Samstag":["06:00","23:00"],"Sonntag":["06:00","23:00"] };
+function irIcon(c,s){s=s||56;return `<svg viewBox="0 0 64 64" width="${s}" height="${s}" fill="none" aria-hidden="true"><circle cx="32" cy="32" r="11" stroke="${c}" stroke-width="3"/>${[0,45,90,135,180,225,270,315].map(a=>{const r=a*Math.PI/180,x1=32+Math.cos(r)*18,y1=32+Math.sin(r)*18,x2=32+Math.cos(r)*27,y2=32+Math.sin(r)*27;return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${c}" stroke-width="3" stroke-linecap="round"/>`;}).join("")}</svg>`;}
+function infraTile(t){
+  const [a,b]=INFRA[t.weekday]||["06:00","24:00"];
+  const open=t.minutes>=toMin(a)&&t.minutes<toMin(b);
+  const foot=open?`Heute geöffnet bis ${b} Uhr`:(t.minutes<toMin(a)?`Öffnet heute um ${a} Uhr`:`Öffnet morgen um 06:00 Uhr`);
+  return `<div class="tile">
+      <div class="tile-top"><span class="tl"><span class="tile-label">INFRAROT</span><span class="cap">max. 1 Person</span></span></div>
+      <div class="status"><div class="ico">${irIcon(open?"#000000":"rgba(0,0,0,.4)",60)}</div><div class="txt"><span class="big">${open?"GEÖFFNET":"GESCHLOSSEN"}</span></div></div>
+      <div class="meta" style="flex-direction:column;align-items:flex-start;gap:4px"><span class="time">Mo – Do&nbsp;&nbsp;06:00 – 24:00</span><span class="time">Fr – So&nbsp;&nbsp;06:00 – 23:00</span></div>
+      <div class="foot">${esc(foot)}</div></div>`;
+}
 /* ---------- Ansichten ---------- */
 function viewHome(data,t){
   const tile=(href,label,plan,aria,cap)=>{
@@ -272,6 +287,7 @@ function viewHome(data,t){
       ${AUFGUSS_BANNER}
       ${tile("#sanarium","SAUNA COZY",data.sanarium,"Sauna Cozy öffnen","max. 8 Personen")}
       ${tile("#finnisch","SAUNA VIEW",data.finnisch,"Sauna View öffnen","max. 14 Personen")}
+      ${infraTile(t)}
     </main>`;
 }
 function detailHead(titleHtml,tabs,info,pill){
