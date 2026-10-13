@@ -175,6 +175,9 @@
 .auf .ah{font-family:'Platelet',sans-serif;font-weight:600;font-size:25px;letter-spacing:4px;white-space:nowrap}
 .auf .at{margin-top:4px;font-family:'Frutiger LightCn',sans-serif;font-weight:300;font-size:50px;letter-spacing:1px;white-space:nowrap;line-height:1}
 .auf .at b{font-weight:400}
+.auf.bed{background:#2a2a2a;color:#fff;box-shadow:inset 0 0 0 2px #f4bd00}
+.auf.bed svg path{stroke:#f4bd00}
+.auftag{font-size:27px !important;letter-spacing:.3px !important}
 .auf.now{animation:aufPulse 1.6s ease-in-out infinite}
 .auf.now svg{animation:steamUp 1.6s ease-in-out infinite}
 @keyframes aufPulse{0%,100%{box-shadow:0 0 0 0 rgba(244,189,0,.7)}50%{box-shadow:0 0 0 26px rgba(244,189,0,0)}}
@@ -479,19 +482,36 @@ function steamIcon(c){
   return `<svg viewBox="0 0 24 24" fill="none"><path d="M7 21c-2-3 2-5 0-8s2-5 0-8" stroke="${c}" stroke-width="1.8" stroke-linecap="round"/><path d="M12 21c-2-3 2-5 0-8s2-5 0-8" stroke="${c}" stroke-width="1.8" stroke-linecap="round"/><path d="M17 21c-2-3 2-5 0-8s2-5 0-8" stroke="${c}" stroke-width="1.8" stroke-linecap="round"/></svg>`;
 }
 function hhmm(m){ return String(Math.floor(m/60)%24).padStart(2,"0")+":"+String(m%60).padStart(2,"0"); }
-function isOpenAt(rows, m){
-  return rows.some(r => !String(r.bereich).toLowerCase().includes("reinigung") && m >= toMinutes(r.start) && m < toMinutes(r.end));
+function isAufgussAt(rows, m){
+  // Aufguss nur im Modus Finnisch (im Sanarium gibt es Bedampfung statt Aufguss)
+  return rows.some(r => {
+    const b = String(r.bereich).toLowerCase();
+    return b.includes("finnisch") && m >= toMinutes(r.start) && m < toMinutes(r.end);
+  });
 }
-const AUF_NOW_MIN = 3; // so lange nach :00 / :30 steht "AUFGUSS JETZT"
-function renderAufguss(rows, nowMin){
+function aufgussMinutes(){
+  const a = scheduleData && scheduleData._aufguss && scheduleData._aufguss.cozy;
+  return Array.isArray(a) ? a : [0, 30];   // Standard: volle und halbe Stunde
+}
+const AUF_NOW_MIN = 3; // so lange nach dem Aufguss-Zeitpunkt steht "AUFGUSS JETZT"
+function renderAufguss(rows, nowMin, activeRow){
   const el = document.getElementById("aufguss");
-  const slot = Math.floor(nowMin/30)*30;
-  if(nowMin - slot < AUF_NOW_MIN && isOpenAt(rows, slot)){
-    el.innerHTML = `<div class="auf now">${steamIcon("#000")}<div><div class="ah">AUFGUSS</div><div class="at"><b>JETZT</b></div></div></div>`;
+  // Sanarium: automatische Bedampfung, keine festen Zeiten
+  if(activeRow && String(activeRow.bereich).toLowerCase().includes("sanarium")){
+    el.innerHTML = `<div class="auf bed">${steamIcon("#000")}<div><div class="ah">AUTOMATISCHE</div><div class="at">Bedampfung</div></div></div>`;
     return;
   }
+  const mins = aufgussMinutes();
+  if(!mins.length){ el.innerHTML = ""; return; }
+  for(let k = 0; k < AUF_NOW_MIN; k++){
+    const m = nowMin - k;
+    if(m >= 0 && mins.includes(m % 60) && isAufgussAt(rows, m)){
+      el.innerHTML = `<div class="auf now">${steamIcon("#000")}<div><div class="ah">AUFGUSS</div><div class="at"><b>JETZT</b></div></div></div>`;
+      return;
+    }
+  }
   let next = null;
-  for(let c = Math.ceil((nowMin+1)/30)*30; c < 24*60; c += 30){ if(isOpenAt(rows, c)){ next = c; break; } }
+  for(let c = nowMin + 1; c < 24*60; c++){ if(mins.includes(c % 60) && isAufgussAt(rows, c)){ next = c; break; } }
   if(next === null){ el.innerHTML = ""; return; }
   const diff = next - nowMin;
   const txt = diff <= 15 ? `in <b>${diff} Min</b> · ${hhmm(next)}` : `<b>${hhmm(next)}</b> Uhr`;
@@ -507,12 +527,12 @@ function update(){
   renderHero(active, next, rows);
   // Ohne Temperaturzeile (Reinigung/Geschlossen) Platz fuer den Pfeil unten lassen
   document.querySelector(".status-row").classList.toggle("nometrics", !document.getElementById("statusMetrics").innerHTML.trim());
-  renderAufguss(rows, minutes);
+  renderAufguss(rows, minutes, active);
 }
 
 /* ---------- Statischer Wegweiser-Pfeil (immer sichtbar, Richtung Sauna) ---------- */
 document.getElementById("statusArrow").innerHTML = arrowIcon(WAY_COLOR);
-document.getElementById("aufTag").innerHTML = steamIcon("#000") + "<b>AUFGUSS</b> alle 30 Minuten · in beiden Saunen";
+document.getElementById("aufTag").innerHTML = steamIcon("#000") + "Finnisch: Aufguss alle 30 Min · Sanarium: Bedampfung";
 
 /* ---------- Skalierung an Fenster-/Screengroesse ---------- */
 function fitScreen(){

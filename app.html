@@ -122,6 +122,7 @@ header.top{border-bottom:0;box-shadow:0 6px 18px rgba(0,0,0,.07);position:relati
 .aufpill{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;background:#f4bd00;color:#000;border-radius:999px;padding:6px 13px 6px 9px;font-size:15px;margin-top:4px}
 .aufpill b{font-weight:400;letter-spacing:.5px}
 .status .txt .aufpill{margin-top:8px}
+.aufpill.bed{background:#fff;box-shadow:inset 0 0 0 1.5px #f4bd00}
 .aufline{display:flex;align-items:center;gap:8px;font-size:15px;padding-top:10px;border-top:1px solid rgba(0,0,0,.1)}
 .aufline b{font-weight:400;letter-spacing:2px;text-transform:uppercase;font-size:13px}
 </style>
@@ -233,23 +234,33 @@ function metaLine(info,small){
   return `<div class="meta${small?" small":""}"><span class="time">${a.start} – ${a.end}</span>${s?`<span>${thermoIcon("#000000")}${s.temp} °C</span><span>${dropIcon("#000000")}${s.hum} %</span>`:""}</div>`;
 }
 
-/* ---------- Automatischer Aufguss: alle 30 Minuten (volle und halbe Stunde) ---------- */
+/* ---------- Aufguss (nur Finnisch, Minuten aus dem Sheet "Einstellungen") / Bedampfung (Sanarium) ---------- */
 function steamIcon(c,w){return `<svg viewBox="0 0 24 24" width="${w||22}" height="${w||22}" fill="none" aria-hidden="true"><path d="M7 21c-2-3 2-5 0-8s2-5 0-8" stroke="${c||"#000"}" stroke-width="1.8" stroke-linecap="round"/><path d="M12 21c-2-3 2-5 0-8s2-5 0-8" stroke="${c||"#000"}" stroke-width="1.8" stroke-linecap="round"/><path d="M17 21c-2-3 2-5 0-8s2-5 0-8" stroke="${c||"#000"}" stroke-width="1.8" stroke-linecap="round"/></svg>`;}
 function hhmm(m){return String(Math.floor(m/60)%24).padStart(2,"0")+":"+String(m%60).padStart(2,"0");}
+function aufMinutes(plan){
+  const which = (typeof DATA!=="undefined" && DATA && plan===DATA.finnisch) ? "view" : "cozy";
+  const a = DATA && DATA.aufguss && DATA.aufguss[which];
+  return Array.isArray(a) ? a : [0,30];
+}
+// Aufguss nur im Modus Finnisch; im Sanarium gibt es automatische Bedampfung
 function nextAufguss(plan,t){
-  const rows=daysOf(plan,t.weekday).filter(r=>kind(r.bereich)!=="clean");
-  for(let c=Math.ceil(t.minutes/30)*30;c<24*60;c+=30){
-    if(rows.some(r=>c>=toMin(r.start)&&c<toMin(r.end))) return c;
+  const mins=aufMinutes(plan); if(!mins.length) return null;
+  const rows=daysOf(plan,t.weekday).filter(r=>String(r.bereich).toLowerCase().includes("finnisch"));
+  for(let c=t.minutes;c<24*60;c++){
+    if(mins.includes(c%60) && rows.some(r=>c>=toMin(r.start)&&c<toMin(r.end))) return c;
   }
   return null;
 }
 function aufgussPill(plan,t){
+  const active=findActive(daysOf(plan,t.weekday),t.minutes);
+  if(active && String(active.bereich).toLowerCase().includes("sanarium"))
+    return `<div class="aufpill bed">${steamIcon("#000",20)}<span>Automatische <b>Bedampfung</b></span></div>`;
   const c=nextAufguss(plan,t); if(c===null) return "";
   const diff=c-t.minutes;
   const txt = diff===0 ? "Aufguss <b>jetzt</b>" : diff<=10 ? `Nächster Aufguss <b>in ${diff} Min</b> · ${hhmm(c)}` : `Nächster Aufguss <b>${hhmm(c)}</b>`;
   return `<div class="aufpill">${steamIcon("#000",20)}<span>${txt}</span></div>`;
 }
-const AUFGUSS_BANNER=`<div class="aufbanner">${steamIcon("#000",34)}<div class="aufb-t"><div class="aufb-h">AUTOMATISCHER AUFGUSS</div><div class="aufb-s">alle 30 Minuten · zur vollen und halben Stunde · in beiden Saunen</div></div></div>`;
+const AUFGUSS_BANNER=`<div class="aufbanner">${steamIcon("#000",34)}<div class="aufb-t"><div class="aufb-h">AUFGUSS &amp; BEDAMPFUNG</div><div class="aufb-s">Finnisch: automatischer Aufguss alle 30 Minuten · Sanarium: automatische Bedampfung</div></div></div>`;
 
 
 /* ---------- Infrarotkabine: feste Zeiten (nicht im Sheet) ---------- */
@@ -335,7 +346,7 @@ function viewSanariumWoche(data,t){
       <span><span class="dot" style="background:#ef5b84"></span>Ladies</span>
       <span><span class="dot" style="background:#000"></span>Mixed</span>
       <span><span class="dot" style="background:#868785"></span>Reinigung</span></div><hr>
-      ${specLine("SANARIUM",SPECS.sanarium)}${specLine("FINNISCH",SPECS.finnisch)}<div class="aufline">${steamIcon("#000",20)}<span><b>Aufguss</b> automatisch alle 30 Min · zur vollen &amp; halben Stunde</span></div></div>
+      ${specLine("SANARIUM",SPECS.sanarium)}${specLine("FINNISCH",SPECS.finnisch)}<div class="aufline">${steamIcon("#000",20)}<span><b>Finnisch</b> Aufguss alle 30 Min · <b>Sanarium</b> Bedampfung</span></div></div>
       ${isEmptyPlan(data.sanarium)?closedCard("Die Sauna Cozy"):weekBlocks(data.sanarium,t,true)}</main>`;
 }
 function viewFinnisch(data,t){
@@ -344,7 +355,7 @@ function viewFinnisch(data,t){
     `<main>${isEmptyPlan(data.finnisch)?"":`<div class="legend"><div class="keys">
       <span>${mixedIcon("#000",26,22)}Mixed Finnisch</span>
       <span>${cleaningIcon("#5a5b59",22,22)}Reinigung</span></div><hr>
-      ${specLine("FINNISCH",SPECS.finnisch)}<div class="aufline">${steamIcon("#000",20)}<span><b>Aufguss</b> automatisch alle 30 Min · zur vollen &amp; halben Stunde</span></div></div>`}
+      ${specLine("FINNISCH",SPECS.finnisch)}<div class="aufline">${steamIcon("#000",20)}<span><b>Aufguss</b> automatisch alle 30 Minuten</span></div></div>`}
       ${isEmptyPlan(data.finnisch)?closedCard("Die Sauna View"):weekBlocks(data.finnisch,t,false)}</main>`;
 }
 
