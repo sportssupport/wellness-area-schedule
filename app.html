@@ -165,19 +165,24 @@ function now(){
 }
 function kind(bereich){
   const b=String(bereich||"").toLowerCase();
+  if(b.trim().startsWith("geschl")||b.includes("geschlossen")) return "closed";
   if(b.includes("reinigung")) return "clean";
   if(b.startsWith("ladies")) return "ladies";
   return "mixed";
 }
 function specsFor(bereich){
   const b=String(bereich||"").toLowerCase();
+  if(kind(bereich)==="closed") return null;
   if(b.includes("reinigung")) return null;
   if(b.includes("finnisch")) return SPECS.finnisch;
   if(b.includes("sanarium")) return SPECS.sanarium;
   return null;
 }
+function closedIcon(c,s){s=s||26;return `<svg viewBox="0 0 64 64" width="${s}" height="${s}" fill="none" aria-hidden="true"><circle cx="32" cy="32" r="24" stroke="${c}" stroke-width="3.5"/><path d="M15 49 L49 15" stroke="${c}" stroke-width="3.5" stroke-linecap="round"/></svg>`;}
+function areaLabel(b){return kind(b)==="closed" ? ("Geschlossen "+String(b).trim().replace(/^geschl(ossen|\.)?\s*/i,"")).trim() : b;}
 function rowIcon(bereich,big){
   const k=kind(bereich);
+  if(k==="closed") return closedIcon("#5a5b59",big?30:24);
   if(k==="clean") return cleaningIcon("#5a5b59",big?34:26,big?34:26);
   if(k==="ladies") return personIcon("#ef5b84",big?22:18,big?34:28);
   return mixedIcon("#000000",big?40:32,big?34:27);
@@ -186,9 +191,9 @@ function daysOf(plan,day){return (plan&&plan[day])||[];}
 function findActive(rows,min){return rows.find(r=>min>=toMin(r.start)&&min<toMin(r.end))||null;}
 function findNext(plan,day,min){
   const i=WEEK.indexOf(day);
-  const later=daysOf(plan,day).find(r=>toMin(r.start)>min);
+  const later=daysOf(plan,day).find(r=>toMin(r.start)>min&&kind(r.bereich)!=="closed");
   if(later) return {day,row:later,today:true};
-  for(let k=1;k<=7;k++){const d=WEEK[(i+k)%7];const rows=daysOf(plan,d);if(rows.length) return {day:d,row:rows[0],today:false};}
+  for(let k=1;k<=7;k++){const d=WEEK[(i+k)%7];const rows=daysOf(plan,d).filter(r=>kind(r.bereich)!=="closed");if(rows.length) return {day:d,row:rows[0],today:false};}
   return null;
 }
 
@@ -201,7 +206,7 @@ function statusInfo(plan,t){
   const active=findActive(rows,t.minutes);
   if(active){
     const after=rows.find(r=>toMin(r.start)>=toMin(active.end));
-    const foot=after ? "Danach "+after.start+" "+after.bereich : "Danach geschlossen";
+    const foot=after ? "Danach "+after.start+" "+areaLabel(after.bereich) : "Danach geschlossen";
     return {active,foot};
   }
   const next=findNext(plan,t.weekday,t.minutes);
@@ -218,7 +223,8 @@ function statusBlock(info,withTag,iconSize,extra){
   }
   const k=kind(a.bereich);
   let icon, lines;
-  if(k==="clean"){icon=cleaningIcon("#000000",Math.round(W*.8),Math.round(W*.8));lines=['REINIGUNG'];}
+  if(k==="closed"){icon=closedIcon("#000000",Math.round(W*.75));lines=['GESCHLOSSEN'];}
+  else if(k==="clean"){icon=cleaningIcon("#000000",Math.round(W*.8),Math.round(W*.8));lines=['REINIGUNG'];}
   else if(k==="ladies"){icon=personIcon("#ef5b84",Math.round(H*.62),H);}
   else {icon=mixedIcon("#000000",W,H);}
   if(!lines){const parts=a.bereich.split(" ");lines=[parts[0],parts.slice(1).join(" ")].filter(Boolean).map(s=>s.toUpperCase());}
@@ -253,7 +259,7 @@ function nextAufguss(plan,t){
 }
 function aufgussPill(plan,t){
   const active=findActive(daysOf(plan,t.weekday),t.minutes);
-  if(active && String(active.bereich).toLowerCase().includes("sanarium"))
+  if(active && kind(active.bereich)!=="closed" && String(active.bereich).toLowerCase().includes("sanarium"))
     return `<div class="aufpill bed">${steamIcon("#000",20)}<span>Automatische <b>Bedampfung</b></span></div>`;
   const c=nextAufguss(plan,t); if(c===null) return "";
   const diff=c-t.minutes;
@@ -318,7 +324,7 @@ function viewSanariumHeute(data,t){
   const active=findActive(rows,t.minutes);
   const list=rows.length ? rows.map(r=>{
     const past=t.minutes>=toMin(r.end), on=r===active;
-    return `<div class="row${on?" active":past?" past":""}${kind(r.bereich)==="clean"?" clean":""}"><div class="ico">${rowIcon(r.bereich,true)}</div><span class="t">${r.start} – ${r.end}</span><span class="a">${esc(r.bereich)}</span>${on?'<span class="tag">JETZT</span>':""}</div>`;
+    return `<div class="row${on?" active":past?" past":""}${(kind(r.bereich)==="clean"||kind(r.bereich)==="closed")?" clean":""}"><div class="ico">${rowIcon(r.bereich,true)}</div><span class="t">${r.start} – ${r.end}</span><span class="a">${esc(areaLabel(r.bereich))}</span>${on?'<span class="tag">JETZT</span>':""}</div>`;
   }).join("") : `<div class="empty">Heute kein Plan hinterlegt</div>`;
   return detailHead(SAN_TITLE,sanariumTabs("heute"),statusInfo(data.sanarium,t),aufgussPill(data.sanarium,t)) +
     `<main style="gap:0;padding-top:20px">${AUFGUSS_BANNER}<div class="kicker" style="margin-top:22px">Heute, ${esc(t.weekday)}</div><div class="title" style="margin-top:6px">TAGESPLAN</div><div style="margin-top:14px">${list}</div></main>`;
@@ -329,9 +335,9 @@ function weekBlocks(plan,t,dotMode){
     const body=rows.length ? rows.map(r=>{
       const k=kind(r.bereich);
       const mark = dotMode
-        ? `<span class="dot" style="background:${k==="ladies"?"#ef5b84":k==="clean"?"#868785":"#000"}"></span>`
+        ? `<span class="dot" style="background:${k==="ladies"?"#ef5b84":(k==="clean"||k==="closed")?"#868785":"#000"}"></span>`
         : `<div class="ico">${rowIcon(r.bereich,false)}</div>`;
-      return `<div class="drow">${mark}<span class="t">${r.start} – ${r.end}</span><span class="a">${esc(r.bereich)}</span></div>`;
+      return `<div class="drow">${mark}<span class="t">${r.start} – ${r.end}</span><span class="a">${esc(areaLabel(r.bereich))}</span></div>`;
     }).join("") : `<div class="drow"><span class="a" style="color:#4a4b49">Geschlossen</span></div>`;
     const today=d===t.weekday;
     return `<section class="day${today?" today":""}"><div class="day-head"><span>${d.toUpperCase()}</span>${today?'<span class="tag">HEUTE</span>':""}</div>${body}</section>`;

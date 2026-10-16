@@ -85,7 +85,7 @@ html,body{background:#2a2a2a;color:#fff;font-family:'Frutiger LightCn',"Arial Na
 .ccell .t{font-size:16px}
 .l2{display:flex;align-items:center;gap:8px;font-size:20px;white-space:nowrap}
 .cclosed{text-align:center;font-size:20px;color:#5a5b59;padding-top:10px}
-#plan{background:#ebebeb !important}
+#plan{background:#ebebeb !important;border-radius:36px 36px 0 0}
 .bar{background:#fff !important;color:#000 !important;border:1.5px solid #2b2b2b}
 .bar .cap,.bar .sp b,.bar .h1,.bar .hl .d{color:#555 !important}
 .row{border-bottom-color:rgba(0,0,0,.12) !important}
@@ -94,7 +94,7 @@ html,body{background:#2a2a2a;color:#fff;font-family:'Frutiger LightCn',"Arial Na
 .cell,.ccell{border-radius:12px !important}
 .cell.mixed,.ccell.mixed{box-shadow:0 1px 2px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.06)}
 .cell.ladies,.ccell.ladies{box-shadow:0 1px 2px rgba(0,0,0,.08), 0 6px 18px rgba(239,91,132,.18)}
-.cell.clean,.ccell.clean{background:repeating-linear-gradient(135deg,#f7f7f7 0 8px,#d4d4d4 8px 10.5px) !important;border:0 !important;color:#555 !important}
+.cell.closed,.ccell.closed,.cell.clean,.ccell.clean{background:repeating-linear-gradient(135deg,#f7f7f7 0 8px,#d4d4d4 8px 10.5px) !important;border:0 !important;color:#555 !important}
 .qrbox{box-shadow:0 1px 2px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.06)}
 .dh{border-bottom:1px solid rgba(0,0,0,.14) !important}
 .keys .lg{box-shadow:inset 0 0 0 1px rgba(0,0,0,.14)}
@@ -155,6 +155,7 @@ const SHORT = {Montag:"MO",Dienstag:"DI",Mittwoch:"MI",Donnerstag:"DO",Freitag:"
 function icon(k,sc,col,sw){
   sc=sc||1; col=col||"#000"; sw=sw||3.4;
   if(k==="ladies") return `<svg viewBox="0 0 40 64" width="${Math.round(16*sc)}" height="${Math.round(26*sc)}" fill="none"><circle cx="20" cy="10" r="9" stroke="${col}" stroke-width="${sw}"/><path d="M6 60 L10 28 Q20 20 30 28 L34 60" stroke="${col}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+  if(k==="closed") return `<svg viewBox="0 0 64 64" width="${Math.round(24*sc)}" height="${Math.round(24*sc)}" fill="none"><circle cx="32" cy="32" r="24" stroke="${col}" stroke-width="${sw}"/><path d="M15 49 L49 15" stroke="${col}" stroke-width="${sw}" stroke-linecap="round"/></svg>`;
   if(k==="mixed") return `<svg viewBox="0 0 76 64" width="${Math.round(31*sc)}" height="${Math.round(26*sc)}" fill="none"><circle cx="18" cy="10" r="8" stroke="${col}" stroke-width="${sw}"/><path d="M6 58 L9 26 Q18 19 27 26 L30 58" stroke="${col}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"/><circle cx="58" cy="10" r="8" stroke="${col}" stroke-width="${sw}"/><path d="M50 30 L46 44 L52 44 L52 58 L64 58 L64 44 L70 44 L66 30 Z" stroke="${col}" stroke-width="${sw}" stroke-linejoin="round"/></svg>`;
   return `<svg viewBox="0 0 64 64" width="${Math.round(24*sc)}" height="${Math.round(24*sc)}" fill="none"><rect x="18" y="27" width="21" height="33" rx="4" stroke="${col}" stroke-width="${sw}"/><rect x="24" y="18" width="9" height="10" stroke="${col}" stroke-width="${sw}"/><path d="M33 21 L46 21 L46 12 L37 12" stroke="${col}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
@@ -163,14 +164,14 @@ function drop(c){return `<svg viewBox="0 0 24 24" width="24" height="24" fill="n
 
 /* ---------- Helfer ---------- */
 function esc(s){return String(s).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));}
-function kind(b){b=String(b||"").toLowerCase();return b.includes("reinigung")?"clean":(b.startsWith("ladies")?"ladies":"mixed");}
-function mode(b){if(kind(b)==="clean")return "Reinigung";const p=String(b).split(" ");return p.length>1?p.slice(1).join(" "):b;}
+function kind(b){b=String(b||"").toLowerCase().trim();if(b.startsWith("geschl")||b.includes("geschlossen"))return "closed";return b.includes("reinigung")?"clean":(b.startsWith("ladies")?"ladies":"mixed");}
+function mode(b){if(kind(b)==="closed")return "Geschlossen";if(kind(b)==="clean")return "Reinigung";const p=String(b).split(" ");return p.length>1?p.slice(1).join(" "):b;}
 function rowsOf(plan,d){return (plan&&plan[d])||[];}
 
 /* Oeffnungszeiten der Finnischen Sauna je Tag (Reinigung ausgenommen) */
 function finSummary(plan){
   const perDay=WEEK.map(d=>{
-    const open=rowsOf(plan,d).filter(r=>kind(r.bereich)!=="clean");
+    const open=rowsOf(plan,d).filter(r=>kind(r.bereich)!=="clean"&&kind(r.bereich)!=="closed");
     if(!open.length) return "geschlossen";
     // aneinandergrenzende Slots zusammenfassen
     const parts=[];open.forEach(r=>{const last=parts[parts.length-1];if(last&&last.end===r.start)last.end=r.end;else parts.push({start:r.start,end:r.end});});
@@ -220,7 +221,7 @@ function build(data){
     // Tage nebeneinander, Termine untereinander
     body=`<div class="grid">${WEEK.map(d=>{const list=rowsOf(data.sanarium,d);
       const cells=list.length?list.map(r=>{const k=kind(r.bereich);
-        return `<div class="ccell ${k}"><div class="t">${esc(r.start)} – ${esc(r.end)}</div><div class="l2">${icon(k,1,k==="clean"?"#5a5b59":"#000")}<span>${esc(mode(r.bereich))}</span></div></div>`;}).join("")
+        return `<div class="ccell ${k}"><div class="t">${esc(r.start)} – ${esc(r.end)}</div><div class="l2">${icon(k,1,(k==="clean"||k==="closed")?"#5a5b59":"#000")}<span>${esc(mode(r.bereich))}</span></div></div>`;}).join("")
         :`<div class="cclosed">Geschlossen</div>`;
       return `<div class="col"><div class="dh">${SHORT[d]}</div>${cells}</div>`;}).join("")}</div>`;
   }else{
@@ -228,7 +229,7 @@ function build(data){
     body=`<div class="rows">${WEEK.map(d=>{
       const list=rowsOf(data.sanarium,d);
       const cells=list.length?`<div class="cells">${list.map(r=>{const k=kind(r.bereich);
-        return `<div class="cell ${k}"><div class="ic">${icon(k,1.35,k==="clean"?"#5a5b59":"#000")}</div><div class="tx"><div class="t">${esc(r.start)} – ${esc(r.end)}</div><div class="l">${esc(mode(r.bereich))}</div></div></div>`;}).join("")}</div>`
+        return `<div class="cell ${k}"><div class="ic">${icon(k,1.35,(k==="clean"||k==="closed")?"#5a5b59":"#000")}</div><div class="tx"><div class="t">${esc(r.start)} – ${esc(r.end)}</div><div class="l">${esc(mode(r.bereich))}</div></div></div>`;}).join("")}</div>`
         :`<div class="closed">Geschlossen</div>`;
       return `<div class="row"><div class="dn">${d.toUpperCase()}</div>${cells}</div>`;}).join("")}</div>`;
   }
@@ -328,7 +329,7 @@ btn.addEventListener("click",async()=>{
       const stage=document.getElementById("stage"), tf=stage.style.transform;
       stage.style.transform="none";              // fuer die Aufnahme unskaliert
       try{
-        const canvas=await html2canvas(node,{width:1080,height:840,scale:SCALE,backgroundColor:"#efcfa9",logging:false});
+        const canvas=await html2canvas(node,{width:1080,height:840,scale:SCALE,backgroundColor:null,logging:false});
         url=canvas.toDataURL("image/png");
       }finally{ stage.style.transform=tf; }
     }

@@ -210,6 +210,7 @@
 .status-time{font-size:100px !important;margin-top:26px !important;letter-spacing:2px !important}
 .status-metrics{font-size:44px !important;margin-top:14px !important;gap:44px !important}
 .status-metrics svg{width:42px !important;height:42px !important}
+.status-row{margin-bottom:auto !important}
 .way{position:absolute;right:0;bottom:4px;flex-direction:row-reverse !important;align-items:center !important;gap:18px !important}
 .status-arrow{width:140px !important;height:92px !important}
 .way-label{font-size:30px !important}
@@ -217,10 +218,22 @@
 .row .icon{width:calc(70px * var(--row-scale,1)) !important;height:calc(70px * var(--row-scale,1)) !important}
 .row .time{font-size:calc(48px * var(--row-scale,1)) !important}
 .row .area{font-size:calc(44px * var(--row-scale,1)) !important;white-space:nowrap}
-.status-access{margin-bottom:96px;font-size:34px !important;letter-spacing:3px}
+.status-access{line-height:1.35;font-size:34px !important;letter-spacing:3px}
 .status-access:empty{display:none}
-.status-row.nometrics .status-time:not(:empty){margin-bottom:96px}
+.status-row.nometrics .status-text{padding-bottom:100px}
 .hero .status-label{white-space:nowrap}
+
+/* ===== Grosser Wegweiser-Pfeil neben SAUNA COZY ===== */
+.way{display:none !important}
+.bigarrow{position:absolute;right:-60px;top:-12px;width:270px;height:170px;animation:bigBlink 1.6s ease-in-out infinite}
+.bigarrow svg{width:100%;height:100%;display:block;filter:drop-shadow(0 0 22px rgba(244,189,0,.55))}
+
+/* v28 Layout: Marke höher, Status nach unten Richtung Tagesplan */
+.hero{padding:30px 80px 60px !important}
+.hero-title{margin-top:70px !important}
+.status-row{margin-top:auto !important;margin-bottom:0 !important}
+.status-row.nometrics .status-text{padding-bottom:0}
+@keyframes bigBlink{0%,100%{opacity:1;transform:translateX(0)}50%{opacity:.35;transform:translateX(10px)}}
 </style>
 </head>
 <body>
@@ -238,7 +251,7 @@
     </div>
 
     <div class="hero-title">
-      <span class="bold">SAUNA COZY</span>
+      <span class="bold">SAUNA COZY</span><div class="bigarrow" id="bigArrow"></div>
       <span class="thin">AKTUELL</span>
       <div class="orange-underline"></div>
       <div id="aufguss"></div>
@@ -350,17 +363,22 @@ function nowInVienna(){
   parts.forEach(p=> map[p.type]=p.value);
   return { weekday: map.weekday, minutes: parseInt(map.hour,10)*60+parseInt(map.minute,10) };
 }
+function isClosedRow(r){ const b = String((r && r.bereich) || "").trim().toLowerCase(); return b.startsWith("geschl") || b.includes("geschlossen"); }
+function closedReason(r){
+  // "Geschl. wg. Umbau" / "Geschlossen wegen Umbau" -> "wg. Umbau" / "wegen Umbau"
+  return String(r.bereich || "").trim().replace(/^geschl(ossen|\.)?\s*/i, "").trim();
+}
 function findActive(rows, nowMinutes){
   return rows.find(r => nowMinutes >= toMinutes(r.start) && nowMinutes < toMinutes(r.end)) || null;
 }
 function findNext(weekday, nowMinutes){
   let idx = WEEKDAY_ORDER.indexOf(weekday);
   let rows = scheduleData[weekday] || [];
-  let upcoming = rows.find(r => toMinutes(r.start) > nowMinutes);
+  let upcoming = rows.find(r => toMinutes(r.start) > nowMinutes && !isClosedRow(r));
   if(upcoming) return { weekday, row:upcoming };
   for(let i=1;i<=7;i++){
     const wd = WEEKDAY_ORDER[(idx+i)%7];
-    const wdRows = scheduleData[wd] || [];
+    const wdRows = (scheduleData[wd] || []).filter(r => !isClosedRow(r));
     if(wdRows.length){ return { weekday: wd, row: wdRows[0] }; }
   }
   return null;
@@ -402,17 +420,20 @@ function renderSchedule(weekday, rows, activeRow, nowMin){
     const isPast = !isActive && nowMin >= toMinutes(r.end);
     div.className = "row" + (isActive ? " active" : "") + (isPast ? " past" : "");
     if(String(r.bereich).toLowerCase().includes("reinigung")) div.classList.add("clean");
+    const closedRow = isClosedRow(r);
+    if(closedRow) div.classList.add("clean");
     const bereichNorm = String(r.bereich || "").trim().toLowerCase();
     let icon, color;
     try {
-      if(bereichNorm.includes("reinigung")){ color="#868785"; icon = cleaningIcon(color); }
+      if(closedRow){ color="#868785"; icon = closedIcon(color); }
+      else if(bereichNorm.includes("reinigung")){ color="#868785"; icon = cleaningIcon(color); }
       else if(bereichNorm.startsWith("ladies")){ color = "#ef5b84"; icon = personIcon(color); }
       else { color = "#000000"; icon = mixedIcon(color); }
       if(!icon) throw new Error("no icon");
     } catch(e){ color = "#000000"; icon = mixedIcon(color); }
     div.innerHTML = `<div class="icon">${icon}</div>
       <div class="time">${r.start} – ${r.end}</div>
-      <div class="area">${r.bereich}</div>`;
+      <div class="area">${closedRow ? ("Geschlossen " + closedReason(r)).trim() : r.bereich}</div>`;
     list.appendChild(div);
   });
   // Falls die Termine nicht ganz in den Tagesplan passen: schrittweise verkleinern
@@ -423,6 +444,20 @@ function renderSchedule(weekday, rows, activeRow, nowMin){
   }
 }
 
+function dayLabel(wd){
+  const today = nowInVienna().weekday;
+  if(wd === today) return "heute";
+  const i = WEEKDAY_ORDER.indexOf(today);
+  if(WEEKDAY_ORDER[(i+1)%7] === wd) return "morgen";
+  return wd;
+}
+function findNextAfter(row){
+  const { weekday } = nowInVienna();
+  return findNext(weekday, toMinutes(row.end) - 1);
+}
+function closedIcon(color){
+  return `<svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="24" stroke="${color}" stroke-width="3"/><path d="M15 49 L49 15" stroke="${color}" stroke-width="3" stroke-linecap="round"/></svg>`;
+}
 function renderHero(activeRow, nextInfo, rows){
   const labelEl = document.getElementById("statusLabel");
   const metricsEl = document.getElementById("statusMetrics");
@@ -436,16 +471,28 @@ function renderHero(activeRow, nextInfo, rows){
     labelEl.innerHTML = "GESCHLOSSEN";
     fitLabel(labelEl);
     metricsEl.innerHTML = "";
-    iconEl.innerHTML = mixedIcon("#ffffff");
+    iconEl.innerHTML = closedIcon("#ffffff");
     if(nextInfo){
       timeEl.textContent = "";
-      accessEl.textContent = "Nächste Einheit: " + nextInfo.weekday + " " + nextInfo.row.start + " Uhr";
+      accessEl.textContent = "Nächste Einheit: " + dayLabel(nextInfo.weekday) + " " + nextInfo.row.start + " Uhr";
     } else {
       accessEl.textContent = "";
     }
     return;
   }
 
+  if(isClosedRow(activeRow)){
+    labelEl.className = "status-label mixed compact";
+    labelEl.innerHTML = "GESCHLOSSEN";
+    fitLabel(labelEl);
+    metricsEl.innerHTML = "";
+    iconEl.innerHTML = closedIcon("#ffffff");
+    timeEl.textContent = activeRow.start + " – " + activeRow.end;
+    const nx = findNextAfter(activeRow);
+    const esc2 = t => String(t).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+    accessEl.innerHTML = [closedReason(activeRow), nx ? "Wieder offen: " + dayLabel(nx.weekday) + " " + nx.row.start + " Uhr" : ""].filter(Boolean).map(esc2).join("<br>");
+    return;
+  }
   const activeBereichNorm = String(activeRow.bereich || "").trim().toLowerCase();
   if(activeBereichNorm.includes("reinigung")){
     labelEl.className = "status-label mixed compact";
@@ -497,7 +544,7 @@ const AUF_NOW_MIN = 3; // so lange nach dem Aufguss-Zeitpunkt steht "AUFGUSS JET
 function renderAufguss(rows, nowMin, activeRow){
   const el = document.getElementById("aufguss");
   // Sanarium: automatische Bedampfung, keine festen Zeiten
-  if(activeRow && String(activeRow.bereich).toLowerCase().includes("sanarium")){
+  if(activeRow && !isClosedRow(activeRow) && String(activeRow.bereich).toLowerCase().includes("sanarium")){
     el.innerHTML = `<div class="auf bed">${steamIcon("#000")}<div><div class="ah">AUTOMATISCHE</div><div class="at">Bedampfung</div></div></div>`;
     return;
   }
@@ -532,6 +579,7 @@ function update(){
 
 /* ---------- Statischer Wegweiser-Pfeil (immer sichtbar, Richtung Sauna) ---------- */
 document.getElementById("statusArrow").innerHTML = arrowIcon(WAY_COLOR);
+document.getElementById("bigArrow").innerHTML = arrowIcon(WAY_COLOR);
 document.getElementById("aufTag").innerHTML = steamIcon("#000") + "Finnisch: Aufguss alle 30 Min · Sanarium: Bedampfung";
 
 /* ---------- Skalierung an Fenster-/Screengroesse ---------- */
