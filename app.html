@@ -269,18 +269,48 @@ function aufgussPill(plan,t){
 const AUFGUSS_BANNER=`<div class="aufbanner">${steamIcon("#000",34)}<div class="aufb-t"><div class="aufb-h">AUFGUSS &amp; BEDAMPFUNG</div><div class="aufb-s">Finnisch: automatischer Aufguss alle 30 Minuten · Sanarium: automatische Bedampfung</div></div></div>`;
 
 
-/* ---------- Infrarotkabine: feste Zeiten (nicht im Sheet) ---------- */
-const INFRA={ "Montag":["06:00","24:00"],"Dienstag":["06:00","24:00"],"Mittwoch":["06:00","24:00"],"Donnerstag":["06:00","24:00"],
-  "Freitag":["06:00","23:00"],"Samstag":["06:00","23:00"],"Sonntag":["06:00","23:00"] };
+/* ---------- Infrarotkabine: Zeiten aus dem Blatt "Infrarot" ----------
+   Fehlt das Blatt (oder ist es leer), gelten diese Standardzeiten.
+   Defekt/Wartung: im Sheet als Bereich "Geschlossen wg. ..." eintragen. */
+const INFRA_DEFAULT=(function(){const p={};
+  ["Montag","Dienstag","Mittwoch","Donnerstag"].forEach(d=>p[d]=[{start:"06:00",end:"24:00",bereich:"Infrarot"}]);
+  ["Freitag","Samstag","Sonntag"].forEach(d=>p[d]=[{start:"06:00",end:"23:00",bereich:"Infrarot"}]);
+  return p;})();
+function infraPlan(){const p=DATA&&DATA.infrarot;return (p&&typeof p==="object"&&Object.keys(p).length)?p:INFRA_DEFAULT;}
 function irIcon(c,s){s=s||56;return `<svg viewBox="0 0 64 64" width="${s}" height="${s}" fill="none" aria-hidden="true"><circle cx="32" cy="32" r="11" stroke="${c}" stroke-width="3"/>${[0,45,90,135,180,225,270,315].map(a=>{const r=a*Math.PI/180,x1=32+Math.cos(r)*18,y1=32+Math.sin(r)*18,x2=32+Math.cos(r)*27,y2=32+Math.sin(r)*27;return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${c}" stroke-width="3" stroke-linecap="round"/>`;}).join("")}</svg>`;}
+const DSHORT={Montag:"Mo",Dienstag:"Di",Mittwoch:"Mi",Donnerstag:"Do",Freitag:"Fr",Samstag:"Sa",Sonntag:"So"};
+/* Oeffnungszeiten je Tag, gleiche aufeinanderfolgende Tage zusammengefasst */
+function infraHours(plan){
+  const per=WEEK.map(d=>{const open=daysOf(plan,d).filter(r=>kind(r.bereich)!=="closed"&&kind(r.bereich)!=="clean");
+    if(!open.length) return "geschlossen";
+    const parts=[];open.forEach(r=>{const l=parts[parts.length-1];if(l&&l.end===r.start)l.end=r.end;else parts.push({start:r.start,end:r.end});});
+    return parts.map(p=>p.start+" – "+p.end).join(", ");});
+  const g=[];per.forEach((txt,i)=>{const l=g[g.length-1];if(l&&l.txt===txt)l.to=i;else g.push({from:i,to:i,txt});});
+  return g.map(x=>({label:(x.from===0&&x.to===6)?"Täglich":(x.from===x.to?DSHORT[WEEK[x.from]]:DSHORT[WEEK[x.from]]+" – "+DSHORT[WEEK[x.to]]),txt:x.txt}));
+}
 function infraTile(t){
-  const [a,b]=INFRA[t.weekday]||["06:00","24:00"];
-  const open=t.minutes>=toMin(a)&&t.minutes<toMin(b);
-  const foot=open?`Heute geöffnet bis ${b} Uhr`:(t.minutes<toMin(a)?`Öffnet heute um ${a} Uhr`:`Öffnet morgen um 06:00 Uhr`);
+  const plan=infraPlan();
+  const rows=daysOf(plan,t.weekday);
+  const active=findActive(rows,t.minutes);
+  const open=!!active&&kind(active.bereich)!=="closed"&&kind(active.bereich)!=="clean";
+  const allClosed=WEEK.every(d=>!daysOf(plan,d).some(r=>kind(r.bereich)!=="closed"&&kind(r.bereich)!=="clean"));
+  let foot;
+  if(open){
+    // angrenzende Slots zusammenfassen
+    let end=active.end;rows.forEach(r=>{if(r.start===end&&kind(r.bereich)!=="closed"&&kind(r.bereich)!=="clean")end=r.end;});
+    foot=`Heute geöffnet bis ${end} Uhr`;
+  }else if(active&&kind(active.bereich)==="closed"){
+    const nx=findNext(plan,t.weekday,toMin(active.end)-1);
+    foot=areaLabel(active.bereich)+(nx?` · wieder offen ${nx.today?"heute":nx.day} ${nx.row.start} Uhr`:"");
+  }else{
+    const nx=findNext(plan,t.weekday,t.minutes);
+    foot=allClosed?"Derzeit geschlossen":(nx?`Öffnet ${nx.today?"heute":nx.day} um ${nx.row.start} Uhr`:"Derzeit geschlossen");
+  }
+  const hours=allClosed?`<span class="time">Derzeit geschlossen</span>`:infraHours(plan).slice(0,4).map(h=>`<span class="time">${esc(h.label)}&nbsp;&nbsp;${esc(h.txt)}</span>`).join("");
   return `<div class="tile">
       <div class="tile-top"><span class="tl"><span class="tile-label">INFRAROT</span><span class="cap">max. 1 Person</span></span></div>
       <div class="status"><div class="ico">${irIcon(open?"#000000":"rgba(0,0,0,.4)",60)}</div><div class="txt"><span class="big">${open?"GEÖFFNET":"GESCHLOSSEN"}</span></div></div>
-      <div class="meta" style="flex-direction:column;align-items:flex-start;gap:4px"><span class="time">Mo – Do&nbsp;&nbsp;06:00 – 24:00</span><span class="time">Fr – So&nbsp;&nbsp;06:00 – 23:00</span></div>
+      <div class="meta" style="flex-direction:column;align-items:flex-start;gap:4px">${hours}</div>
       <div class="foot">${esc(foot)}</div></div>`;
 }
 /* ---------- Ansichten ---------- */

@@ -168,6 +168,31 @@ function kind(b){b=String(b||"").toLowerCase().trim();if(b.startsWith("geschl")|
 function mode(b){if(kind(b)==="closed")return "Geschlossen";if(kind(b)==="clean")return "Reinigung";const p=String(b).split(" ");return p.length>1?p.slice(1).join(" "):b;}
 function rowsOf(plan,d){return (plan&&plan[d])||[];}
 
+/* Infrarotkabine: Zeiten aus dem Blatt "Infrarot" (format=alle -> infrarot).
+   Fehlt das Blatt oder ist es leer, gelten diese Standardzeiten. */
+const INFRA_DEFAULT=(function(){const p={};
+  ["Montag","Dienstag","Mittwoch","Donnerstag"].forEach(d=>p[d]=[{start:"06:00",end:"24:00",bereich:"Infrarot"}]);
+  ["Freitag","Samstag","Sonntag"].forEach(d=>p[d]=[{start:"06:00",end:"23:00",bereich:"Infrarot"}]);
+  return p;})();
+function infraPlan(d){return (d&&d.infrarot&&typeof d.infrarot==="object"&&Object.keys(d.infrarot).length)?d.infrarot:INFRA_DEFAULT;}
+/* Grund einer Schliessung, z. B. "Geschl. wg. Defekt" -> "wg. Defekt" */
+function closedWhy(plan){
+  for(const d of WEEK){const r=rowsOf(plan,d).find(x=>kind(x.bereich)==="closed");
+    if(r){const w=String(r.bereich).trim().replace(/^geschl(ossen|\.)?\s*/i,"").trim();if(w)return w;}}
+  return "";
+}
+/* Ist die Einrichtung die ganze Woche zu (keine offenen Zeiten)? */
+function allClosed(plan){return WEEK.every(d=>!rowsOf(plan,d).some(r=>kind(r.bereich)!=="clean"&&kind(r.bereich)!=="closed"));}
+/* Stundenblock fuer Sauna View / Infrarot (gleiche Tage zusammengefasst) */
+function hoursHtml(plan){
+  if(allClosed(plan)){const w=closedWhy(plan);
+    return `<div class="hr"><span class="h1">DERZEIT</span><span class="h2">geschlossen</span>${w?`<span class="h1">${esc(w)}</span>`:""}</div>`;}
+  const g=finSummary(plan);
+  return g.length===1
+    ? `<div class="hr"><span class="h1">${dayRange(g[0])}</span><span class="h2">${esc(g[0].txt)}</span></div>`
+    : `<div class="hr">${g.slice(0,4).map(x=>`<div class="hl"><span class="d">${dayRange(x)}</span><span class="z">${esc(x.txt)}</span></div>`).join("")}</div>`;
+}
+
 /* Oeffnungszeiten der Finnischen Sauna je Tag (Reinigung ausgenommen) */
 function finSummary(plan){
   const perDay=WEEK.map(d=>{
@@ -233,16 +258,13 @@ function build(data){
         :`<div class="closed">Geschlossen</div>`;
       return `<div class="row"><div class="dn">${d.toUpperCase()}</div>${cells}</div>`;}).join("")}</div>`;
   }
-  const finClosed=WEEK.every(d=>!rowsOf(data.finnisch,d).length);
-  const groups=finSummary(data.finnisch);
-  const hours = finClosed ? `<div class="hr"><span class="h2">Derzeit geschlossen</span></div>` : groups.length===1
-    ? `<div class="hr"><span class="h1">${dayRange(groups[0])}</span><span class="h2">${esc(groups[0].txt)}</span></div>`
-    : `<div class="hr">${groups.slice(0,4).map(g=>`<div class="hl"><span class="d">${dayRange(g)}</span><span class="z">${esc(g.txt)}</span></div>`).join("")}</div>`;
+  const finClosed=allClosed(data.finnisch);
+  const hours=hoursHtml(data.finnisch);
   const cg=cleanSummary(data.finnisch);
   const cleanLine = (!finClosed && cg.length) ? `<div class="hclean">${cg.map(g=>"Reinigung "+(dayRange(g)==="TÄGLICH"?"täglich":dayRange(g))+" "+esc(g.txt)).join(" · ")}</div>` : "";
-  const fin=`<div class="bar fin">${icon("mixed",1.9,W,3)}<div class="nm"><span class="n">SAUNA VIEW</span><span class="spx" style="margin-top:8px;align-self:flex-start">Aufguss alle 30 Min</span></div>
+  const fin=`<div class="bar fin">${icon("mixed",1.9,W,3)}<div class="nm"><span class="n">SAUNA VIEW</span>${finClosed?"":`<span class="spx" style="margin-top:8px;align-self:flex-start">Aufguss alle 30 Min</span>`}</div>
     <div class="r"><div class="hcol">${hours}${cleanLine}</div>${finClosed?"":`<div class="sp"><span>${thermo(W)}85 °C</span><span>${drop(W)}10 %</span></div>`}</div></div>`;
-  const infra=`<div class="bar infra"><div class="nm"><span class="n">INFRAROT</span></div><div class="r"><div class="hr"><div class="hl"><span class="d">MO – DO</span><span class="z">06:00 – 24:00</span></div><div class="hl"><span class="d">FR – SO</span><span class="z">06:00 – 23:00</span></div></div></div></div>`;
+  const infra=`<div class="bar infra"><div class="nm"><span class="n">INFRAROT</span></div><div class="r">${hoursHtml(infraPlan(data))}</div></div>`;
   return head+san+body+`<div class="duo">${fin}${infra}</div>`;
 }
 
@@ -250,7 +272,7 @@ function build(data){
 /* Ueberschneidungen finden (z. B. alte Zeilen im Sheet) */
 function overlaps(d){
   const out=[];
-  [["Sanarium",d.sanarium],["Finnische Sauna",d.finnisch]].forEach(([name,plan])=>{
+  [["Sanarium",d.sanarium],["Finnische Sauna",d.finnisch],["Infrarot",d.infrarot||{}]].forEach(([name,plan])=>{
     WEEK.forEach(day=>{
       const rows=rowsOf(plan,day);
       for(let i=1;i<rows.length;i++){
