@@ -332,8 +332,8 @@ function viewHome(data,t){
     </header>
     <main style="gap:16px">
       ${AUFGUSS_BANNER}
-      ${tile("#sanarium","SAUNA COZY",data.sanarium,"Sauna Cozy öffnen","max. 8 Personen")}
       ${tile("#finnisch","SAUNA VIEW",data.finnisch,"Sauna View öffnen","max. 14 Personen")}
+      ${tile("#sanarium","SAUNA COZY",data.sanarium,"Sauna Cozy öffnen","max. 8 Personen")}
       ${infraTile(t)}
     </main>`;
 }
@@ -413,7 +413,7 @@ function viewSkeleton(route,t){
       <div class="bar"></div>
       <div class="datetime">${t.weekday.toUpperCase()}, ${t.clock} UHR</div>
     </header>
-    <main style="gap:16px">${tile("SAUNA COZY","max. 8 Personen")}${tile("SAUNA VIEW","max. 14 Personen")}</main>`;
+    <main style="gap:16px">${tile("SAUNA VIEW","max. 14 Personen")}${tile("SAUNA COZY","max. 8 Personen")}</main>`;
 }
 
 /* ---------- Steuerung ---------- */
