@@ -336,7 +336,7 @@
    Der letzte erfolgreich geladene Plan wird im Browser gemerkt, damit
    der Screen auch bei kurzem Internet-Ausfall weiterlaeuft.
    ============================================================ */
-const DATA_URL = "https://script.google.com/macros/s/AKfycbwi6oI96_qHr6GsFBUZ0OCP2KTLpHeZ8Q3iMpwGs2W6LeKBrmrMP1vsK9nfK_aiI3YYEQ/exec?format=alle";
+const DATA_URL = "https://script.google.com/macros/s/AKfycbwi6oI96_qHr6GsFBUZ0OCP2KTLpHeZ8Q3iMpwGs2W6LeKBrmrMP1vsK9nfK_aiI3YYEQ/exec?format=alle&screen=view";   // screen=… nur fuer status.html (Online-Kontrolle)
 const DATA_REFRESH_MS = 5 * 60 * 1000;   // Plan alle 5 Minuten frisch aus der Tabelle holen
 const RETRY_MS = 30 * 1000;              // bei Fehler nach 30 Sekunden erneut versuchen
 const PAGE_RELOAD_MS = 60 * 60 * 1000;   // Seite 1x pro Stunde neu laden (holt Design-Updates)
