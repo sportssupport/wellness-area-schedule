@@ -118,7 +118,8 @@
 html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;cursor:none}
 .stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
 .screen{position:relative;width:1080px;height:1920px;flex:0 0 auto;background:#000;overflow:hidden;transform-origin:center center}
-#vid{position:absolute;left:0;top:0;width:1080px;height:1116px;object-fit:cover;background:#000;display:block}
+#vidbox{position:absolute;left:0;top:0;width:1080px;height:1116px;background:#000;overflow:hidden}
+#vidbox video{position:absolute;left:0;top:0;width:1080px;height:1116px;object-fit:cover;background:#000;display:block}
 .planwrap{position:absolute;left:0;top:1080px;width:1080px;height:840px}
 #plan .dh.today,#plan .dn.today{color:#000;font-weight:400}
 #plan .dh.today{border-bottom:3px solid #f4bd00 !important;padding-bottom:5px}
@@ -128,10 +129,7 @@ html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;cursor
 <body>
 <div class="stage">
   <div class="screen" id="screen">
-    <video id="vid" autoplay muted loop playsinline preload="auto" disablepictureinpicture>
-      <source src="sauna-video-hevc.mp4" type='video/mp4; codecs="hvc1"'>
-      <source src="sauna-video.mp4" type="video/mp4">
-    </video>
+    <div id="vidbox"></div>
     <div class="planwrap"><div id="plan"><div class="loading">Wochenplan wird geladen …</div></div></div>
   </div>
 </div>
@@ -142,14 +140,22 @@ html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;cursor
    (gleiche Quelle wie App und Screens, Code.gs ?format=alle).
    - Plan wird alle 5 Minuten neu geladen
    - letzter Stand wird im Browser gemerkt (Internet-Ausfall)
-   - Seite laedt 1x pro Stunde neu (holt Design-Updates)
+   - Seite laedt NICHT mehr stuendlich neu (das liess das Video auf
+     Samsung-Displays nach einigen Stunden haengen). Stattdessen wird
+     jede Stunde geprueft, ob es auf GitHub eine neue Version gibt -
+     nur dann wird neu geladen. Zusaetzlich 1x taeglich um 05:10.
+   - Video: Waechter erkennt Haenger und startet das Video neu
+     (zuerst sanft, dann mit frischem Video-Element, notfalls Seite).
+   - Video-Datei: Standard H.264 (sauna-video.mp4, am zuverlaessigsten).
+     HEVC-Version testen: URL mit ?video=hevc aufrufen.
    - Display steht quer statt hoch? URL mit ?drehen=links
      bzw. ?drehen=rechts aufrufen.
    ============================================================ */
-const DATA_URL = "https://script.google.com/macros/s/AKfycbwi6oI96_qHr6GsFBUZ0OCP2KTLpHeZ8Q3iMpwGs2W6LeKBrmrMP1vsK9nfK_aiI3YYEQ/exec?format=alle";
+const DATA_URL = "https://script.google.com/macros/s/AKfycbwi6oI96_qHr6GsFBUZ0OCP2KTLpHeZ8Q3iMpwGs2W6LeKBrmrMP1vsK9nfK_aiI3YYEQ/exec?format=alle&screen=links";   // screen=… nur fuer status.html (Online-Kontrolle)
 const DATA_REFRESH_MS = 5 * 60 * 1000;
 const RETRY_MS = 30 * 1000;
-const PAGE_RELOAD_MS = 60 * 60 * 1000;
+const UPDATE_CHECK_MS = 60 * 60 * 1000;  // stuendlich: neue Version auf GitHub?
+const DAILY_RELOAD = "05:10";            // taeglich frisch starten (Displays gehen um 05:00 an)
 const CACHE_KEY = "links-wochenplan-cache";
 const TIMEZONE = "Europe/Vienna";
 const WEEK = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"];
@@ -319,7 +325,7 @@ function writeCache(d){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(d));
 let dataTimer = null;
 function loadData(){
   clearTimeout(dataTimer);
-  fetch(DATA_URL, { cache:"no-store" })
+  fetch(DATA_URL + "&video=" + videoState() + "&codec=" + videoCodec(), { cache:"no-store" })
     .then(r => { if(!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
     .then(d => {
       if(!d || !d.sanarium || typeof d.sanarium !== "object") throw new Error("unerwartete Daten");
@@ -330,18 +336,86 @@ function loadData(){
     .catch(err => { console.warn("Wochenplan konnte nicht geladen werden:", err); dataTimer = setTimeout(loadData, RETRY_MS); });
 }
 
-/* ---------- Video: laeuft immer weiter (Schutz gegen Haenger) ---------- */
-const vid = document.getElementById("vid");
-vid.muted = true;
-function kick(){ const p = vid.play(); if(p && p.catch) p.catch(()=>{}); }
-vid.addEventListener("canplay", kick);
-vid.addEventListener("ended", () => { vid.currentTime = 0; kick(); });
-let lastT = -1, stuck = 0;
+/* ---------- Video: laeuft immer weiter (Schutz gegen Haenger) ----------
+   Kein loop-Attribut (auf manchen Samsung-Displays unzuverlaessig):
+   am Ende wird manuell auf 0 gesprungen. Der Waechter prueft alle 5 s,
+   ob die Wiedergabezeit weiterlaeuft, und greift stufenweise ein:
+     15 s Stillstand -> play() + kleiner Sprung
+     30 s Stillstand -> Video-Element komplett neu anlegen (gibt den
+                        Decoder frei)
+     nach 3 Neuanlagen ohne Erfolg -> Seite neu laden (max. 1x / 30 Min) */
+const PARAMS = new URLSearchParams(location.search);
+const VIDEO_SRC = PARAMS.get("video") === "hevc" ? "sauna-video-hevc.mp4" : "sauna-video.mp4";
+let vid = null, lastT = -1, lastProgress = Date.now(), videoError = false, rebuilds = 0, rebuildsSinceOk = 0;
+
+function kick(){
+  if(!vid) return;
+  vid.muted = true;
+  try{ const p = vid.play(); if(p && p.catch) p.catch(()=>{}); }catch(e){}
+}
+function destroyVideo(){
+  if(!vid) return;
+  try{ vid.pause(); vid.removeAttribute("src"); vid.load(); }catch(e){}   // Decoder freigeben
+  if(vid.parentNode) vid.parentNode.removeChild(vid);
+  vid = null;
+}
+function createVideo(){
+  destroyVideo();
+  const v = document.createElement("video");
+  v.muted = true; v.defaultMuted = true; v.autoplay = true; v.playsInline = true;
+  v.setAttribute("muted", ""); v.setAttribute("playsinline", ""); v.setAttribute("disablepictureinpicture", "");
+  v.preload = "auto";
+  v.addEventListener("canplay", kick);
+  v.addEventListener("ended", () => { try{ v.currentTime = 0; }catch(e){} kick(); });
+  v.addEventListener("timeupdate", () => noteTime(v));
+  v.addEventListener("seeked", () => { if(v === vid) lastT = v.currentTime; });   // Sprung zaehlt nie als Fortschritt
+  v.addEventListener("error", () => { videoError = true; });
+  v.src = VIDEO_SRC;
+  document.getElementById("vidbox").appendChild(v);
+  vid = v; lastT = 0; lastProgress = Date.now();
+  kick();
+}
+/* Echter Fortschritt = Wiedergabezeit laeuft vorwaerts (kein Sprung, kein Neustart) */
+function noteTime(v){
+  if(v !== vid || v.seeking) return;
+  const t = v.currentTime;
+  if(t > lastT + 0.05){ lastProgress = Date.now(); videoError = false; rebuildsSinceOk = 0; lastT = t; }
+  else if(t < lastT){ lastT = t; }            // Schleife von vorne / Ruecksprung: neue Basis
+}
+/* Fuer status.html: laeuft das Video wirklich? */
+function videoState(){
+  if(!vid || (videoError && Date.now() - lastProgress > 30000)) return "fehler";
+  return (Date.now() - lastProgress < 30000 && !vid.paused) ? "laeuft" : "steht";
+}
+function videoCodec(){ return VIDEO_SRC.indexOf("hevc") >= 0 ? "hevc" : "h264"; }
+
+function canHardReload(){
+  try{
+    const last = parseInt(localStorage.getItem("links-hard-reload") || "0", 10);
+    if(Date.now() - last < 30 * 60 * 1000) return false;
+    localStorage.setItem("links-hard-reload", String(Date.now()));
+  }catch(e){}
+  return true;
+}
 setInterval(() => {
-  if(vid.paused) kick();
-  if(vid.currentTime === lastT){ stuck++; } else { stuck = 0; lastT = vid.currentTime; }
-  if(stuck >= 3){ stuck = 0; vid.load(); kick(); }   // 30 s ohne Fortschritt -> Video neu laden
-}, 10000);
+  if(!vid){ createVideo(); return; }
+  noteTime(vid);
+  const still = Date.now() - lastProgress;
+  // Laedt das Video gerade noch (z. B. langsames WLAN nach dem Einschalten)? Dann bis 3 Min Geduld.
+  const loading = vid.readyState < 3 && vid.networkState === 2;
+  if(still >= (loading ? 180000 : 30000)){
+    rebuilds++; rebuildsSinceOk++;
+    if(rebuildsSinceOk > 3 && navigator.onLine !== false && canHardReload()){ location.reload(); return; }
+    createVideo();                                  // frisches Video-Element
+  } else if(still >= 15000 && !loading){
+    kick();
+    try{ if(vid.readyState >= 2 && isFinite(vid.duration) && vid.duration > 1){
+      vid.currentTime = (vid.currentTime + 0.5) % (vid.duration - 0.5); } }catch(e){}
+  } else if(vid.paused){
+    kick();
+  }
+}, 5000);
+createVideo();
 
 /* ---------- An Bildschirm anpassen (optional drehen) ---------- */
 const ROT = (new URLSearchParams(location.search).get("drehen") || "").toLowerCase();
@@ -355,11 +429,26 @@ function fitScreen(){
 window.addEventListener("resize", fitScreen);
 fitScreen();
 
-/* ---------- Stuendlich neu laden (nur wenn erreichbar) ---------- */
-function safeReload(){
+/* ---------- Neue Version auf GitHub? Nur dann neu laden ---------- */
+let pageVersion = null;
+function versionOf(r){ return r.headers.get("etag") || r.headers.get("last-modified") || ""; }
+function checkUpdate(){
   fetch(location.href, { cache:"no-store", method:"HEAD" })
-    .then(r => { if(r.ok) location.reload(); else setTimeout(safeReload, RETRY_MS); })
-    .catch(() => setTimeout(safeReload, RETRY_MS));
+    .then(r => {
+      if(!r.ok) return;
+      const v = versionOf(r);
+      if(!v) return;
+      if(pageVersion === null){ pageVersion = v; return; }
+      if(v !== pageVersion) location.reload();      // neue Datei auf GitHub -> laden
+    })
+    .catch(() => {});
+}
+/* 1x taeglich frisch starten (nur wenn die Seite erreichbar ist) */
+function dailyReload(){
+  const hm = new Intl.DateTimeFormat("de-AT",{ timeZone:TIMEZONE, hour:"2-digit", minute:"2-digit", hour12:false }).format(new Date());
+  if(hm === DAILY_RELOAD && performance.now() > 10 * 60 * 1000){
+    fetch(location.href, { cache:"no-store", method:"HEAD" }).then(r => { if(r.ok) location.reload(); }).catch(() => {});
+  }
 }
 
 /* ---------- Start ---------- */
@@ -369,7 +458,9 @@ function safeReload(){
   render();
   loadData();
   setInterval(render, 60 * 1000);       // Tageswechsel -> heutigen Tag neu markieren
-  setTimeout(safeReload, PAGE_RELOAD_MS);
+  checkUpdate();
+  setInterval(checkUpdate, UPDATE_CHECK_MS);
+  setInterval(dailyReload, 60 * 1000);
 })();
 </script>
 </body>
